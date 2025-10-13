@@ -1,0 +1,13 @@
+claim_number,rule_no,rule_desc,priority,value
+WC-2024-002,5,Any law enforcement inquiry regarding the validity of any part of the claim,High,9
+WC-2024-002,7,A surveillance or tip reveals the totally disabled worker is currently employed elsewhere,High,10
+WC-2024-002,26,Multiple providers billing for same service on same date,Medium,6
+WC-2024-002,37,Claimant history shows pattern of similar claims across multiple employers,Medium,7
+WC-2024-006,7,A surveillance or tip reveals the totally disabled worker is currently employed elsewhere,High,10
+WC-2024-006,10,Any false statement willfully made with the intent to deceive,High,8
+WC-2024-007,7,A surveillance or tip reveals the totally disabled worker is currently employed elsewhere,High,10
+WC-2024-007,10,Any false statement willfully made with the intent to deceive,High,8
+WC-2024-007,37,Claimant history shows pattern of similar claims across multiple employers,Medium,7
+WC-2024-011,10,Any false statement willfully made with the intent to deceive,High,8
+WC-2024-011,37,Claimant history shows pattern of similar claims across multiple employers,Medium,7
+WC-2024-011,75,Medical treatment inconsistent with documented injury severity,Low,4
