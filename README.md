@@ -1,5 +1,8 @@
 # Fraud Hub - Network-mapping-aglorith-enhanced fraud detection & analytics software
 
+<img width="1919" height="1061" alt="image" src="https://github.com/user-attachments/assets/6a7f3986-979d-41b1-be6f-aafa7c927f3a" />
+
+
 A network analysis-based system for detecting potential fraud conspiracies in workers compensation claims.
 
 ## Overview
