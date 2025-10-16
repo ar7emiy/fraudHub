@@ -272,12 +272,112 @@ def get_communities():
         }), 500
 
 
+@app.route('/api/network-data', methods=['GET'])
+def get_network_data():
+    """
+    Get network visualization data
+
+    Returns nodes, edges, and community information optimized for React Force Graph
+    """
+    try:
+        if 'entity_dashboard' not in data_cache:
+            return jsonify({
+                'success': False,
+                'error': 'Data not initialized'
+            }), 500
+
+        # Get all entities
+        entities_df = data_cache['entity_dashboard'].copy()
+
+        # Get latest statuses from database
+        statuses = db.get_all_latest_statuses()
+        entities_df['investigation_status'] = entities_df['entity_name'].map(
+            lambda x: statuses.get(x, 'Not Reviewed')
+        )
+
+        # Get community memberships
+        entity_communities_df = data_cache['entity_communities']
+
+        # Build nodes array
+        nodes = []
+        for _, entity in entities_df.iterrows():
+            # Get communities for this entity
+            entity_comms = entity_communities_df[
+                entity_communities_df['entity_name'] == entity['entity_name']
+            ]['community_id'].tolist()
+
+            nodes.append({
+                'id': entity['entity_name'],
+                'name': entity['entity_name'],
+                'entityType': entity['entity_type'],
+                'communities': entity_comms,
+                'riskScore': float(entity['ensemble_score']),
+                'financialExposure': float(entity['total_exposure']),
+                'isFraud': int(entity['is_fraud']),
+                'investigationStatus': entity['investigation_status'],
+                'connectedClaimsCount': int(entity['connected_claims_count'])
+            })
+
+        # Build edges array
+        connections_df = data_cache['entity_connections']
+        edges = []
+
+        for _, conn in connections_df.iterrows():
+            edges.append({
+                'source': conn['source_entity'],
+                'target': conn['target_entity'],
+                'weight': int(conn['connection_strength']),
+                'claimNumbers': conn['shared_claim_numbers'],
+                'targetIsFraud': bool(conn['target_is_confirmed_fraud']),
+                'maxFraudScore': float(conn['max_shared_claim_fraud_score'])
+            })
+
+        # Build communities info
+        community_members_df = data_cache['community_members']
+        communities_stats = community_members_df.groupby('community_id').agg({
+            'entity_name': 'count',
+            'is_fraud': ['sum', 'mean']
+        }).reset_index()
+
+        communities_stats.columns = ['community_id', 'total_members', 'fraud_count', 'fraud_ratio']
+
+        communities = []
+        for _, comm in communities_stats.iterrows():
+            members = community_members_df[
+                community_members_df['community_id'] == comm['community_id']
+            ]['entity_name'].tolist()
+
+            communities.append({
+                'id': int(comm['community_id']),
+                'members': members,
+                'totalMembers': int(comm['total_members']),
+                'fraudCount': int(comm['fraud_count']),
+                'fraudRatio': float(comm['fraud_ratio'])
+            })
+
+        return jsonify({
+            'success': True,
+            'data': {
+                'nodes': nodes,
+                'edges': edges,
+                'communities': communities
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"Error in get_network_data: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
 @app.route('/api/reload', methods=['POST'])
 def reload_data():
     """Reload all data (useful for development/testing)"""
     try:
         success = initialize_data()
-        
+
         if success:
             return jsonify({
                 'success': True,
@@ -288,7 +388,7 @@ def reload_data():
                 'success': False,
                 'error': 'Failed to reload data'
             }), 500
-    
+
     except Exception as e:
         logger.error(f"Error in reload_data: {e}")
         return jsonify({

@@ -43,6 +43,11 @@ export const api = {
     return response.data;
   },
 
+  getNetworkData: async () => {
+    const response = await apiClient.get('/network-data');
+    return response.data;
+  },
+
   reloadData: async () => {
     const response = await apiClient.post('/reload');
     return response.data;

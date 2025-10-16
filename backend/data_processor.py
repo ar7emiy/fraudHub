@@ -36,6 +36,27 @@ from config import (
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Import network complexity configuration
+try:
+    from network_config import (
+        NUM_DOCTORS, NUM_LAWYERS, NUM_BUSINESSES, NUM_CLAIMANTS,
+        NUM_CLAIMS, MIN_ENTITIES_PER_CLAIM, MAX_ENTITIES_PER_CLAIM,
+        FRAUD_RATIO, CLAIM_NOTE_TEMPLATES, INJURY_TYPES,
+        FRAUD_CLAIM_INCURRED_MIN, FRAUD_CLAIM_INCURRED_MAX,
+        FRAUD_CLAIM_RESERVE_MIN, FRAUD_CLAIM_RESERVE_MAX,
+        NORMAL_CLAIM_INCURRED_MIN, NORMAL_CLAIM_INCURRED_MAX,
+        NORMAL_CLAIM_RESERVE_MIN, NORMAL_CLAIM_RESERVE_MAX,
+        ACTIVE_PRESET, get_preset
+    )
+    NETWORK_CONFIG_AVAILABLE = True
+    logger.info(f"Network configuration loaded: {ACTIVE_PRESET if ACTIVE_PRESET else 'custom'}")
+    if ACTIVE_PRESET:
+        preset_info = get_preset(ACTIVE_PRESET)
+        logger.info(f"  → {preset_info['description']}")
+except ImportError:
+    NETWORK_CONFIG_AVAILABLE = False
+    logger.warning("Network config not available, using default hardcoded dataset")
+
 
 class FraudDetectionProcessor:
     """Main data processor for fraud detection dashboard"""
@@ -71,9 +92,150 @@ class FraudDetectionProcessor:
             logger.warning("NER model not available")
     
     def create_dataset(self):
-        """Create the workers compensation dataset"""
-        
-        # Entities and fraud indicators
+        """Create the workers compensation dataset - scalable version"""
+
+        if NETWORK_CONFIG_AVAILABLE:
+            logger.info("Using scalable dataset generation from network_config.py")
+            self._create_scalable_dataset()
+        else:
+            logger.info("Using default hardcoded dataset (40 entities, 20 claims)")
+            self._create_hardcoded_dataset()
+
+        self.fraud_entities = set(self.entities_df[self.entities_df['FraudList'] == 1]['Name_Business'].values)
+        logger.info(f"Dataset created: {len(self.entities_df)} entities, {len(self.notes_df)} notes")
+        logger.info(f"Fraud entities identified: {len(self.fraud_entities)}")
+
+    def _create_scalable_dataset(self):
+        """Generate large-scale dataset using templates (token-efficient)"""
+
+        # Name generation pools
+        doctor_first = ['Michael', 'Jennifer', 'Amanda', 'Steven', 'Carlos', 'Lisa', 'Thomas', 'Nicole',
+                        'David', 'Sarah', 'Robert', 'Patricia', 'James', 'Maria', 'Kevin', 'Daniel',
+                        'Angela', 'Christopher', 'Elizabeth', 'Matthew', 'Jessica', 'Andrew', 'Michelle',
+                        'Joshua', 'Rachel', 'Ryan', 'Rebecca', 'Brian', 'Laura', 'William']
+        doctor_last = ['Rodriguez', 'Walsh', 'Foster', 'Kim', 'Mendez', 'Patel', 'Burke', 'Zhang',
+                       'Smith', 'Johnson', 'Williams', 'Brown', 'Jones', 'Garcia', 'Miller', 'Davis',
+                       'Martinez', 'Hernandez', 'Lopez', 'Gonzalez', 'Wilson', 'Anderson', 'Thomas']
+
+        person_first = ['Sarah', 'David', 'Lisa', 'Robert', 'Maria', 'Kevin', 'Patricia', 'Frank',
+                        'Janet', 'Brandon', 'Emma', 'Angela', 'Mark', 'Chris', 'Samantha', 'Daniel',
+                        'Michelle', 'Steven', 'Rachel', 'Tony', 'Jessica', 'Andrew', 'Nicole', 'Brian']
+        person_last = ['Thompson', 'Park', 'Chen', 'Davis', 'Gonzalez', 'O\'Brien', 'Williams', 'Harrison',
+                       'Murphy', 'Taylor', 'Watson', 'Scott', 'Johnson', 'Adams', 'Lee', 'Cooper',
+                       'Mitchell', 'Green', 'Ricci', 'Martinez', 'Brown', 'Moore', 'Jackson', 'White']
+
+        business_prefixes = ['Atlantic', 'Quick Heal', 'Summit', 'Elite', 'Northside', 'Thompson',
+                            'Miller', 'City', 'Valley', 'Metro', 'Precision', 'Global', 'Progressive',
+                            'Premier', 'United', 'National', 'Regional', 'Central', 'Coastal', 'Mountain']
+        business_suffixes = ['Medical Group', 'Physical Therapy', 'Construction LLC', 'Diagnostics Center',
+                            'Medical Plaza', 'Associates', 'Defense Attorneys', 'Medical Associates',
+                            'Orthopedic Clinic', 'Legal Group', 'Logistics Inc', 'Shipping Services',
+                            'Wellness Center', 'Care Center', 'Health Services', 'Solutions LLC']
+
+        lawyer_firms = ['Thompson & Associates Law', 'Miller Defense Attorneys', 'Metro Legal Group',
+                        'Coastal Law Partners', 'Premier Legal Services', 'United Defense Group',
+                        'National Claims Attorneys', 'Regional Legal Associates']
+
+        # Generate entities
+        entities = []
+        entity_types = []
+        fraud_flags = []
+
+        # Doctors
+        for i in range(NUM_DOCTORS):
+            first = doctor_first[i % len(doctor_first)]
+            last = doctor_last[i % len(doctor_last)]
+            name = f"Dr. {first} {last}" if i < len(doctor_first) else f"Dr. {first} {last}{i}"
+            entities.append(name)
+            entity_types.append('Doctor')
+            fraud_flags.append(1 if np.random.random() < FRAUD_RATIO else 0)
+
+        # Lawyers
+        for i in range(NUM_LAWYERS):
+            first = person_first[i % len(person_first)]
+            last = person_last[i % len(person_last)]
+            name = f"{first} {last}" if i < len(person_first) else f"{first} {last}{i}"
+            entities.append(name)
+            entity_types.append('Lawyer')
+            fraud_flags.append(1 if np.random.random() < FRAUD_RATIO else 0)
+
+        # Businesses
+        for i in range(NUM_BUSINESSES):
+            prefix = business_prefixes[i % len(business_prefixes)]
+            suffix = business_suffixes[i % len(business_suffixes)]
+            name = f"{prefix} {suffix}" if i < len(business_prefixes) else f"{prefix} {suffix} {i}"
+            entities.append(name)
+            entity_types.append('Business')
+            fraud_flags.append(1 if np.random.random() < FRAUD_RATIO else 0)
+
+        # Claimants (Regular Person / Driver)
+        for i in range(NUM_CLAIMANTS):
+            first = person_first[i % len(person_first)]
+            last = person_last[i % len(person_last)]
+            name = f"{first} {last}" if i < len(person_first) else f"{first} {last}{i}"
+            entities.append(name)
+            entity_types.append('Driver' if i % 3 == 0 else 'Regular Person')
+            fraud_flags.append(1 if np.random.random() < FRAUD_RATIO else 0)
+
+        self.entities_df = pd.DataFrame({
+            'Name_Business': entities,
+            'Type': entity_types,
+            'FraudList': fraud_flags
+        })
+
+        # Generate claims using templates
+        claim_numbers = []
+        note_ids = []
+        notes = []
+
+        # Get entity lists by type for sampling
+        doctors = self.entities_df[self.entities_df['Type'] == 'Doctor']['Name_Business'].tolist()
+        lawyers = self.entities_df[self.entities_df['Type'] == 'Lawyer']['Name_Business'].tolist()
+        businesses = self.entities_df[self.entities_df['Type'] == 'Business']['Name_Business'].tolist()
+        claimants = self.entities_df[self.entities_df['Type'].isin(['Regular Person', 'Driver'])]['Name_Business'].tolist()
+
+        note_counter = 1
+        for claim_idx in range(NUM_CLAIMS):
+            claim_num = f'WC-2024-{claim_idx+1:04d}'
+
+            # How many notes for this claim (1-3)
+            num_notes = np.random.randint(1, 4)
+
+            for note_num in range(num_notes):
+                # Pick entities for this claim note
+                claimant = np.random.choice(claimants)
+                doctor = np.random.choice(doctors) if len(doctors) > 0 else "Dr. Unknown"
+                lawyer = np.random.choice(lawyers) if len(lawyers) > 0 else "Attorney Unknown"
+                business = np.random.choice(businesses) if len(businesses) > 0 else "Unknown Business"
+                injury = np.random.choice(INJURY_TYPES)
+
+                # Use template
+                template = np.random.choice(CLAIM_NOTE_TEMPLATES)
+                note_text = template.format(
+                    claimant=claimant,
+                    doctor=doctor,
+                    lawyer=lawyer,
+                    business=business,
+                    injury_type=injury
+                )
+
+                claim_numbers.append(claim_num)
+                note_ids.append(f'N{note_counter:05d}')
+                notes.append(note_text)
+                note_counter += 1
+
+        self.notes_df = pd.DataFrame({
+            'ClaimNumber': claim_numbers,
+            'NoteID': note_ids,
+            'Note': notes
+        })
+
+        logger.info(f"Generated {len(entities)} entities: {NUM_DOCTORS} doctors, {NUM_LAWYERS} lawyers, {NUM_BUSINESSES} businesses, {NUM_CLAIMANTS} claimants")
+        logger.info(f"Generated {NUM_CLAIMS} claims with {len(notes)} total notes")
+
+    def _create_hardcoded_dataset(self):
+        """Fallback: original hardcoded 40-entity dataset"""
+
         entities_data = {
             'Name_Business': [
                 'Dr. Michael Rodriguez', 'Sarah Thompson', 'Atlantic Medical Group', 'James Mitchell',
@@ -100,8 +262,7 @@ class FraudDetectionProcessor:
                 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1
             ]
         }
-        
-        # Claim notes (truncated for brevity - include all 20 notes in production)
+
         notes_data = {
             'ClaimNumber': [
                 'WC-2024-001', 'WC-2024-001', 'WC-2024-001', 'WC-2024-002', 'WC-2024-002',
@@ -133,13 +294,9 @@ class FraudDetectionProcessor:
                 "Final settlement reached for Mark Johnson claim with total costs of $1,450 including medical expenses and wage replacement. Dr. Lisa Patel released claimant to full duty status."
             ]
         }
-        
+
         self.entities_df = pd.DataFrame(entities_data)
         self.notes_df = pd.DataFrame(notes_data)
-        self.fraud_entities = set(self.entities_df[self.entities_df['FraudList'] == 1]['Name_Business'].values)
-        
-        logger.info(f"Dataset created: {len(self.entities_df)} entities, {len(self.notes_df)} notes")
-        logger.info(f"Fraud entities identified: {len(self.fraud_entities)}")
     
     def extract_entities_ner(self):
         """Extract entities from notes using NER"""
@@ -378,29 +535,41 @@ class FraudDetectionProcessor:
     def _simulate_claim_financials(self):
         """Simulate claim financial data"""
         claim_numbers = self.notes_df['ClaimNumber'].unique()
-        
+
+        # Use network config financial parameters if available
+        if NETWORK_CONFIG_AVAILABLE:
+            fraud_inc_min, fraud_inc_max = FRAUD_CLAIM_INCURRED_MIN, FRAUD_CLAIM_INCURRED_MAX
+            fraud_res_min, fraud_res_max = FRAUD_CLAIM_RESERVE_MIN, FRAUD_CLAIM_RESERVE_MAX
+            norm_inc_min, norm_inc_max = NORMAL_CLAIM_INCURRED_MIN, NORMAL_CLAIM_INCURRED_MAX
+            norm_res_min, norm_res_max = NORMAL_CLAIM_RESERVE_MIN, NORMAL_CLAIM_RESERVE_MAX
+        else:
+            fraud_inc_min, fraud_inc_max = 15000, 50000
+            fraud_res_min, fraud_res_max = 10000, 30000
+            norm_inc_min, norm_inc_max = 1000, 15000
+            norm_res_min, norm_res_max = 500, 10000
+
         financials = []
         for claim in claim_numbers:
             # Higher costs for claims with fraud entities
             entities_in_claim = self.extracted_entities[
                 self.extracted_entities['ClaimNumber'] == claim
             ]['Entity'].tolist()
-            
+
             has_fraud = any(e in self.fraud_entities for e in entities_in_claim)
-            
+
             if has_fraud:
-                incurred = np.random.randint(15000, 50000)
-                reserve = np.random.randint(10000, 30000)
+                incurred = np.random.randint(fraud_inc_min, fraud_inc_max)
+                reserve = np.random.randint(fraud_res_min, fraud_res_max)
             else:
-                incurred = np.random.randint(1000, 15000)
-                reserve = np.random.randint(500, 10000)
-            
+                incurred = np.random.randint(norm_inc_min, norm_inc_max)
+                reserve = np.random.randint(norm_res_min, norm_res_max)
+
             financials.append({
                 'claim_number': claim,
                 'total_incurred': incurred,
                 'reserve_amount': reserve
             })
-        
+
         return pd.DataFrame(financials)
     
     def aggregate_entity_metrics(self):

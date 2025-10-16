@@ -171,6 +171,8 @@ function App() {
         <EntityDetail
           entity={selectedEntity}
           onStatusUpdate={handleStatusUpdate}
+          onEntitySelect={handleEntitySelect}
+          sortBy={filters.sort_by}
         />
       </div>
     </div>
